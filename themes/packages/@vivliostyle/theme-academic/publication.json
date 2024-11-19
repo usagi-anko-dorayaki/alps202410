@@ -1,0 +1,24 @@
+{
+  "@context": [
+    "https://schema.org",
+    "https://www.w3.org/ns/pub-context"
+  ],
+  "type": "Book",
+  "conformsTo": "https://github.com/vivliostyle/vivliostyle-cli",
+  "name": "vivliostyle-theme-academic のサンプル",
+  "author": "Vivliostyle <mail@vivliostyle.org>",
+  "inLanguage": "ja",
+  "dateModified": "2024-11-13T23:15:42.606Z",
+  "readingOrder": [
+    {
+      "url": "example/fet.html",
+      "name": "FET の特性"
+    },
+    {
+      "url": "example/microcomputer.html",
+      "name": "目的"
+    }
+  ],
+  "resources": [],
+  "links": []
+}

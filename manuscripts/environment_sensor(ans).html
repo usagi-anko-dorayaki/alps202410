@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <title>温湿度測定システムの開発（解答例）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="../themes/packages/@vivliostyle/theme-academic/theme.css">
+    <link rel="stylesheet" type="text/css" href="../themes/packages/@mitsuharu/vivliostyle-theme-noto-sans-jp/theme.css">
+    <link rel="stylesheet" type="text/css" href="../styles/subject.css">
+  </head>
+  <body>
+    <section class="level1" aria-labelledby="温湿度測定システムの開発解答例">
+      <h1 id="温湿度測定システムの開発解答例">温湿度測定システムの開発（解答例）</h1>
+      <section class="level2" aria-labelledby="目的">
+        <h2 id="目的">目的</h2>
+      </section>
+      <section class="level2" aria-labelledby="基本機能の実装">
+        <h2 id="基本機能の実装">基本機能の実装</h2>
+        <section class="level3" aria-labelledby="準備-level-10">
+          <h3 id="準備-level-10">準備 Level 1.0</h3>
+          <figure class="language-c">
+            <figcaption>user.cfg</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/* 初期化ルーチンの追加 */</span>
+<span class="token function">ATT_INI</span><span class="token punctuation">(</span> <span class="token punctuation">{</span>TA_NULL<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> initialize<span class="token punctuation">}</span> <span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">/* タスクの生成 */</span>
+<span class="token function">CRE_TSK</span><span class="token punctuation">(</span>MAIN_TASK<span class="token punctuation">,</span> <span class="token punctuation">{</span>TA_ACT<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> main_task<span class="token punctuation">,</span> MAIN_PRIORITY<span class="token punctuation">,</span> STACK_SIZE<span class="token punctuation">,</span> <span class="token constant">NULL</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token function">CRE_TSK</span><span class="token punctuation">(</span>ENV_TASK<span class="token punctuation">,</span> <span class="token punctuation">{</span>TA_ACT<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> env_task<span class="token punctuation">,</span> MID_PRIORITY<span class="token punctuation">,</span> STACK_SIZE<span class="token punctuation">,</span> <span class="token constant">NULL</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token function">CRE_TSK</span><span class="token punctuation">(</span>DATA_CHANGE_TASK<span class="token punctuation">,</span> <span class="token punctuation">{</span>TA_ACT<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> data_change_task<span class="token punctuation">,</span> MID_PRIORITY<span class="token punctuation">,</span> STACK_SIZE<span class="token punctuation">,</span> <span class="token constant">NULL</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token function">CRE_TSK</span><span class="token punctuation">(</span>LCD_TASK<span class="token punctuation">,</span> <span class="token punctuation">{</span>TA_ACT<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> lcd_task<span class="token punctuation">,</span> MID_PRIORITY<span class="token punctuation">,</span> STACK_SIZE<span class="token punctuation">,</span> <span class="token constant">NULL</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>user.h</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/* RTOSのタスク */</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">main_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">env_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">data_change_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">lcd_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/**
+ * 最初に実行されるタスク（RTOSリソース）
+ *
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">main_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+
+  <span class="token function">SVC_PERROR</span><span class="token punctuation">(</span><span class="token function">syslog_msk_log</span><span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">,</span> <span class="token function">LOG_UPTO</span><span class="token punctuation">(</span>LOG_INFO<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// syslog関数のメッセージの優先度を設定</span>
+  
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"MAIN_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+
+<span class="token keyword">void</span> <span class="token function">env_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"ENV_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+
+<span class="token keyword">void</span> <span class="token function">data_change_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"DATA_CHANGE_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+
+<span class="token keyword">void</span> <span class="token function">lcd_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"LCD_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+        </section>
+        <section class="level3" aria-labelledby="main_taskの実装-level-11">
+          <h3 id="main_taskの実装-level-11">MAIN_TASKの実装 Level 1.1</h3>
+          <figure class="language-c">
+            <figcaption>main.c(initialize)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/**
+ * 初期化用の関数（RTOSリソース）
+ * 
+ * user.cfgのATT_INIに登録しているので、RTOS起動時に自動で実行される。
+ * 引数	: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">initialize</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token comment">// 初期処理を記述する</span>
+  <span class="token function">init_fcled</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// フルカラーLEDの初期化</span>
+  
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(MAIN_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/**
+ * 最初に実行されるタスク（RTOSリソース）
+ *
+ * フルカラーLEDの青色を1秒間隔で点滅する。
+ * user.cfgのCRE_TASKで指定しているので、タスクとして実行される。
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">main_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">SVC_PERROR</span><span class="token punctuation">(</span><span class="token function">syslog_msk_log</span><span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">,</span> <span class="token function">LOG_UPTO</span><span class="token punctuation">(</span>LOG_INFO<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// syslog関数のメッセージの優先度を設定</span>
+  
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"MAIN_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token comment">// ここに処理を記述します。</span>
+  <span class="token keyword">int</span> blue_on <span class="token operator">=</span> false<span class="token punctuation">;</span> <span class="token comment">// 青色の点灯状態</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token comment">// ここに処理を記述します。</span>
+    blue_on <span class="token operator">=</span> <span class="token operator">!</span>blue_on<span class="token punctuation">;</span> <span class="token comment">// 点灯状態を反転</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span>blue_on<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">fcled_onoff</span><span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> ON<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 青色を点灯</span>
+    <span class="token punctuation">}</span> <span class="token keyword">else</span> <span class="token punctuation">{</span>
+      <span class="token function">fcled_onoff</span><span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> OFF<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 青色を消灯</span>
+    <span class="token punctuation">}</span>
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">1000</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 1秒間待ち状態</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+        </section>
+        <section class="level3" aria-labelledby="env_taskの実装-level-12">
+          <h3 id="env_taskの実装-level-12">ENV_TASKの実装 Level 1.2</h3>
+          <figure class="language-c">
+            <figcaption>main.c(グローバル変数)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/* グローバル変数 */</span>
+<span class="token keyword">short</span> temp10<span class="token punctuation">;</span> <span class="token comment">// 温度データ（10倍値）</span>
+<span class="token keyword">short</span> humi10<span class="token punctuation">;</span> <span class="token comment">// 湿度データ（10倍値）</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(initialize)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">initialize</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token comment">// 初期処理を記述する</span>
+  <span class="token function">init_fcled</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// フルカラーLEDの初期化</span>
+  <span class="token function">init_riic</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温湿度センサーで使用するI2Cの初期化</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(ENV_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">SENSOR_I2C_ADDR</span> <span class="token expression"><span class="token number">0x8a</span> </span><span class="token comment">// 温湿度センサーのI2Cアドレス</span></span>
+
+<span class="token comment">/**
+ * 温湿度センサーからデータを取得
+ * 
+ * 1秒間隔で温湿度センサーからデータを取得します。
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">env_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"ENV_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">sht31_measure</span><span class="token punctuation">(</span>SENSOR_I2C_ADDR<span class="token punctuation">,</span> <span class="token operator">&#x26;</span>temp10<span class="token punctuation">,</span> <span class="token operator">&#x26;</span>humi10<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温湿度を取得</span>
+    
+    <span class="token comment">/* for Debug */</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"temp is %d."</span><span class="token punctuation">,</span> temp10<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"humi is %d."</span><span class="token punctuation">,</span> humi10<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">1000</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+        </section>
+        <section class="level3" aria-labelledby="data_change_taskの実装-level-13">
+          <h3 id="data_change_taskの実装-level-13">DATA_CHANGE_TASKの実装 Level 1.3</h3>
+          <figure class="language-c">
+            <figcaption>main.c(定数とグローバル変数)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">TEMP_STR_LEN</span> <span class="token expression"><span class="token number">10</span> </span><span class="token comment">// 温度の文字列の長さ</span></span>
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">HUMI_STR_LEN</span> <span class="token expression"><span class="token number">10</span> </span><span class="token comment">// 湿度の文字列の長さ</span></span>
+
+<span class="token comment">/* グローバル変数 */</span>
+<span class="token keyword">short</span> temp10<span class="token punctuation">;</span> <span class="token comment">// 温度データ（10倍値）</span>
+<span class="token keyword">short</span> humi10<span class="token punctuation">;</span> <span class="token comment">// 湿度データ（10倍値）</span>
+<span class="token keyword">char</span> temp<span class="token punctuation">[</span>TEMP_STR_LEN<span class="token punctuation">]</span><span class="token punctuation">;</span> <span class="token comment">// 温度の文字列データ</span>
+<span class="token keyword">char</span> humi<span class="token punctuation">[</span>HUMI_STR_LEN<span class="token punctuation">]</span><span class="token punctuation">;</span> <span class="token comment">// 湿度の文字列データ</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(initialize)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">initialize</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token comment">// 初期処理を記述する</span>
+  <span class="token function">init_fcled</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// フルカラーLEDの初期化</span>
+  <span class="token function">init_riic</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温湿度センサーで使用するI2Cの初期化</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>mani.c(ENV_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">SENSOR_I2C_ADDR</span> <span class="token expression"><span class="token number">0x8a</span> </span><span class="token comment">// 温湿度センサーのI2Cアドレス</span></span>
+
+<span class="token comment">/**
+ * 温湿度センサーからデータを取得
+ * 
+ * 1秒間隔で温湿度センサーからデータを取得します。
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">env_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"ENV_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">sht31_measure</span><span class="token punctuation">(</span>SENSOR_I2C_ADDR<span class="token punctuation">,</span> <span class="token operator">&#x26;</span>temp10<span class="token punctuation">,</span> <span class="token operator">&#x26;</span>humi10<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温湿度を取得</span>
+    <span class="token function">wup_tsk</span><span class="token punctuation">(</span>DATA_CHANGE_TASK<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// DATA_CHANGE_TASKを起床</span>
+    
+    <span class="token comment">/* for Debug */</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"temp is %d."</span><span class="token punctuation">,</span> temp10<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"humi is %d."</span><span class="token punctuation">,</span> humi10<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">1000</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(DATA_CHANGE_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/**
+ * 温湿度データを文字列データに変換
+ * 
+ * 起床されたらグローバル変数からデータを取得して、文字列データに変換して
+ * グローバル変数に保存します。
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">data_change_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"DATA_CHANGE_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">temp2string</span><span class="token punctuation">(</span>temp10<span class="token punctuation">,</span> temp<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温度データを文字列データに変換</span>
+    <span class="token function">humi2string</span><span class="token punctuation">(</span>humi10<span class="token punctuation">,</span> humi<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 湿度データを文字列データに変換</span>
+
+    <span class="token comment">/* for Debug */</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"temp is %s."</span><span class="token punctuation">,</span> temp<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"humi is %s."</span><span class="token punctuation">,</span> humi<span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+        </section>
+        <section class="level3" aria-labelledby="lcd_taskの実装-level-14">
+          <h3 id="lcd_taskの実装-level-14">LCD_TASKの実装 Level 1.4</h3>
+          <figure class="language-c">
+            <figcaption>main.c(initialize)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">initialize</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token comment">// 初期処理を記述する</span>
+  <span class="token function">init_fcled</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// フルカラーLEDの初期化</span>
+  <span class="token function">init_riic</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温湿度センサーで使用するI2Cの初期化</span>
+  <span class="token function">init_lcd</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// LCDを初期化</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(DATA_CHANGE_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">data_change_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"DATA_CHANGE_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">temp2string</span><span class="token punctuation">(</span>temp10<span class="token punctuation">,</span> temp<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温度データを文字列データに変換</span>
+    <span class="token function">humi2string</span><span class="token punctuation">(</span>humi10<span class="token punctuation">,</span> humi<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 湿度データを文字列データに変換</span>
+    <span class="token function">wup_tsk</span><span class="token punctuation">(</span>LCD_TASK<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// LCD_TASKを起床</span>
+
+    <span class="token comment">/* for Debug */</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"temp is %s."</span><span class="token punctuation">,</span> temp<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"humi is %s."</span><span class="token punctuation">,</span> humi<span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(LCD_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">LCD_TEMP_POS_COL</span> <span class="token expression"><span class="token number">0</span> </span><span class="token comment">// LCDに温度データを表示するときのX座標</span></span>
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">LCD_TEMP_POS_LINE</span> <span class="token expression"><span class="token number">0</span> </span><span class="token comment">// LCDに温度データを表示するときのY座標</span></span>
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">LCD_HUMI_POS_COL</span> <span class="token expression"><span class="token number">9</span> </span><span class="token comment">// LCDに湿度データを表示するときのX座標</span></span>
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">LCD_HUMI_POS_LINE</span> <span class="token expression"><span class="token number">0</span> </span><span class="token comment">// LCDに湿度データを表示するときのY座標</span></span>
+
+<span class="token comment">/**
+ * 温湿度データをLCDに表示
+ * 
+ * 起床されたらグローバル変数からデータを取得して、文字列データをLCDに表示
+ * します。
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">lcd_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"LCD_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">lcd_clear</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 表示をクリア</span>
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// lcd_clearのバグ対策</span>
+    <span class="token function">lcd_cur</span><span class="token punctuation">(</span>LCD_TEMP_POS_COL<span class="token punctuation">,</span> LCD_TEMP_POS_LINE<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// カーソルを左上に移動</span>
+    <span class="token function">lcd_string</span><span class="token punctuation">(</span>temp<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温度を表示</span>
+    <span class="token function">lcd_cur</span><span class="token punctuation">(</span>LCD_HUMI_POS_COL<span class="token punctuation">,</span> LCD_HUMI_POS_LINE<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// カーソルを湿度データを表示する位置に移動</span>
+    <span class="token function">lcd_string</span><span class="token punctuation">(</span>humi<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 湿度データを表示</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+        </section>
+      </section>
+      <section class="level2" aria-labelledby="周期ハンドラの実装-level-21">
+        <h2 id="周期ハンドラの実装-level-21">周期ハンドラの実装 Level 2.1</h2>
+        <figure class="language-c">
+          <figcaption>user.cfg</figcaption>
+          <pre class="language-c"><code class="language-c"><span class="token comment">/* 周期ハンドラの生成 */</span>
+<span class="token function">CRE_CYC</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">,</span> <span class="token punctuation">{</span>TA_NULL<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> data_acq_TIMING_handler<span class="token punctuation">,</span> <span class="token number">1000</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+        </figure>
+        <figure class="language-c">
+          <figcaption>main.h</figcaption>
+          <pre class="language-c"><code class="language-c"><span class="token comment">/* RTOSのハンドラ */</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">data_acq_TIMING_handler</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+        </figure>
+        <figure class="language-c">
+          <figcaption>main.c(DATA_ACQ_TIMING_HANDLER)</figcaption>
+          <pre class="language-c"><code class="language-c"><span class="token comment">/**
+ * 温湿度データ収集タイミング生成ハンドラ
+ * 
+ * 温湿度データ収集タイミングを生成します。
+ * 起動するとENV_TASKを起床します。
+ *
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">data_acq_TIMING_handler</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">iwup_tsk</span><span class="token punctuation">(</span>ENV_TASK<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span></code></pre>
+        </figure>
+        <figure class="language-c">
+          <figcaption>main.c(ENV_TASK)</figcaption>
+          <pre class="language-c"><code class="language-c"><span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">SENSOR_I2C_ADDR</span> <span class="token expression"><span class="token number">0x8a</span> </span><span class="token comment">// 温湿度センサーのI2Cアドレス</span></span>
+
+<span class="token comment">/**
+ * 温湿度センサーからデータを取得
+ * 
+ * 1秒間隔で温湿度センサーからデータを取得します。
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">env_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"ENV_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token function">sht31_measure</span><span class="token punctuation">(</span>SENSOR_I2C_ADDR<span class="token punctuation">,</span> <span class="token operator">&#x26;</span>temp10<span class="token punctuation">,</span> <span class="token operator">&#x26;</span>humi10<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温湿度を取得</span>
+    <span class="token function">wup_tsk</span><span class="token punctuation">(</span>DATA_CHANGE_TASK<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// DATA_CHANGE_TASKを起床</span>
+    
+    <span class="token comment">/* for Debug */</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"temp is %d."</span><span class="token punctuation">,</span> temp10<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"humi is %d."</span><span class="token punctuation">,</span> humi10<span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+        </figure>
+        <section class="level3" aria-labelledby="スイッチによる制御-level-22">
+          <h3 id="スイッチによる制御-level-22">スイッチによる制御 Level 2.2</h3>
+          <figure class="language-c">
+            <figcaption>user.cfg</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/* Level 2 */</span>
+<span class="token function">CRE_TSK</span><span class="token punctuation">(</span>SWITCH_TASK<span class="token punctuation">,</span>      <span class="token punctuation">{</span>TA_ACT<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> switch_task<span class="token punctuation">,</span>       HIGH_PRIORITY<span class="token punctuation">,</span> STACK_SIZE<span class="token punctuation">,</span> <span class="token constant">NULL</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">/* 周期ハンドラの生成 */</span>
+<span class="token function">CRE_CYC</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">,</span> <span class="token punctuation">{</span>TA_NULL<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> data_acq_TIMING_handler<span class="token punctuation">,</span> <span class="token number">1000</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>user.h</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/* RTOSのタスク */</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">main_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">env_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">data_change_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">lcd_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token comment">/* Level 2*/</span>
+<span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">switch_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(initialize)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">initialize</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token comment">// 初期処理を記述する</span>
+  <span class="token function">init_fcled</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// フルカラーLEDの初期化</span>
+  <span class="token function">init_riic</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温湿度センサーで使用するI2Cの初期化</span>
+  <span class="token function">init_lcd</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// LCDを初期化</span>
+  <span class="token function">init_tsw</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// スイッチの初期化</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(SWITCH_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/**
+ * スイッチを監視するタスク
+ * 
+ * 定期的にスイッチ（TSW1と2）の状態を確認します。
+ * スイッチの状態で温湿度データ収集タイミング生成ハンドラを制御します。
+ *
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">switch_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> old_tsw1<span class="token punctuation">;</span> <span class="token comment">// 1つ前のTSW1の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> now_tsw1<span class="token punctuation">;</span> <span class="token comment">// 今のTSW1の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> old_tsw2<span class="token punctuation">;</span> <span class="token comment">// 2つ前のTSW2の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> now_tsw2<span class="token punctuation">;</span> <span class="token comment">// 今のTSW2の状態</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    now_tsw1 <span class="token operator">=</span> <span class="token function">tsw_bit</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// TSW1の状態を取得</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token punctuation">(</span>now_tsw1 <span class="token operator">!=</span> old_tsw1<span class="token punctuation">)</span> <span class="token operator">&#x26;&#x26;</span> <span class="token punctuation">(</span>old_tsw1 <span class="token operator">==</span> OFF<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"TSW1 is pressed."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token function">sta_cyc</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 周期ハンドラを開始</span>
+    <span class="token punctuation">}</span>
+    old_tsw1 <span class="token operator">=</span> now_tsw1<span class="token punctuation">;</span> <span class="token comment">// 今の状態を保存</span>
+
+    now_tsw2 <span class="token operator">=</span> <span class="token function">tsw_bit</span><span class="token punctuation">(</span><span class="token number">2</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// TSW2の状態を取得</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token punctuation">(</span>now_tsw2 <span class="token operator">!=</span> old_tsw2<span class="token punctuation">)</span> <span class="token operator">&#x26;&#x26;</span> <span class="token punctuation">(</span>old_tsw2 <span class="token operator">==</span> OFF<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"TSW2 is pressed."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token function">stp_cyc</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 周期ハンドラを停止</span>
+    <span class="token punctuation">}</span>
+    old_tsw2 <span class="token operator">=</span> now_tsw2<span class="token punctuation">;</span> <span class="token comment">// 今の状態を保存</span>
+
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">10</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 監視周期は10ミリ秒</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+        </section>
+        <section class="level3" aria-labelledby="ledの色で動作モードを表示-level-22a">
+          <h3 id="ledの色で動作モードを表示-level-22a">LEDの色で動作モードを表示 Level 2.2a</h3>
+          <figure class="language-c">
+            <figcaption>main.c(グローバル変数)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/* グローバル変数 */</span>
+<span class="token keyword">short</span> temp10<span class="token punctuation">;</span> <span class="token comment">// 温度データ（10倍値）</span>
+<span class="token keyword">short</span> humi10<span class="token punctuation">;</span> <span class="token comment">// 湿度データ（10倍値）</span>
+<span class="token keyword">char</span> temp<span class="token punctuation">[</span>TEMP_STR_LEN<span class="token punctuation">]</span><span class="token punctuation">;</span> <span class="token comment">// 温度の文字列データ</span>
+<span class="token keyword">char</span> humi<span class="token punctuation">[</span>HUMI_STR_LEN<span class="token punctuation">]</span><span class="token punctuation">;</span> <span class="token comment">// 湿度の文字列データ</span>
+
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">MODE_DATA_ACQ_START</span> <span class="token expression"><span class="token number">0x01</span> </span><span class="token comment">// 温湿度データ収集中</span></span>
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">MODE_DATA_ACQ_STOP</span>  <span class="token expression"><span class="token number">0x02</span> </span><span class="token comment">// 温湿度データ収集停止</span></span>
+
+<span class="token keyword">int</span> mode <span class="token operator">=</span> MODE_DATA_ACQ_STOP<span class="token punctuation">;</span> <span class="token comment">// 最初は停止状態</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(MAIN_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">main_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+
+  <span class="token function">SVC_PERROR</span><span class="token punctuation">(</span><span class="token function">syslog_msk_log</span><span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">,</span> <span class="token function">LOG_UPTO</span><span class="token punctuation">(</span>LOG_INFO<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// syslog関数のメッセージの優先度を設定</span>
+  
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"MAIN_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">int</span> turn_on <span class="token operator">=</span> OFF<span class="token punctuation">;</span> <span class="token comment">// LEDの点灯状態</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    turn_on <span class="token operator">=</span> <span class="token operator">~</span>turn_on<span class="token punctuation">;</span> <span class="token comment">// 点灯状態を反転 </span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span>mode <span class="token operator">==</span> MODE_DATA_ACQ_START<span class="token punctuation">)</span> <span class="token punctuation">{</span> <span class="token comment">// 温湿度データ収集中</span>
+      <span class="token function">fcled_onoff</span><span class="token punctuation">(</span>OFF<span class="token punctuation">,</span> OFF<span class="token punctuation">,</span> turn_on<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 赤色を点灯</span>
+    <span class="token punctuation">}</span> <span class="token keyword">else</span> <span class="token keyword">if</span> <span class="token punctuation">(</span>mode <span class="token operator">==</span> MODE_DATA_ACQ_STOP<span class="token punctuation">)</span> <span class="token punctuation">{</span> <span class="token comment">// 温湿度データ収集停止中</span>
+      <span class="token function">fcled_onoff</span><span class="token punctuation">(</span>turn_on<span class="token punctuation">,</span> OFF<span class="token punctuation">,</span> OFF<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 青色を点灯</span>
+    <span class="token punctuation">}</span>
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">1000</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 1秒間待ち状態</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(SWITCH_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">switch_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> old_tsw1<span class="token punctuation">;</span> <span class="token comment">// 1つ前のTSW1の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> now_tsw1<span class="token punctuation">;</span> <span class="token comment">// 今のTSW1の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> old_tsw2<span class="token punctuation">;</span> <span class="token comment">// 2つ前のTSW2の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> now_tsw2<span class="token punctuation">;</span> <span class="token comment">// 今のTSW2の状態</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    now_tsw1 <span class="token operator">=</span> <span class="token function">tsw_bit</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// TSW1の状態を取得</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token punctuation">(</span>now_tsw1 <span class="token operator">!=</span> old_tsw1<span class="token punctuation">)</span> <span class="token operator">&#x26;&#x26;</span> <span class="token punctuation">(</span>old_tsw1 <span class="token operator">==</span> OFF<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"TSW1 is pressed."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token function">sta_cyc</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 周期ハンドラを開始</span>
+      mode <span class="token operator">=</span> MODE_DATA_ACQ_START<span class="token punctuation">;</span> <span class="token comment">// 開始状態へ</span>
+    <span class="token punctuation">}</span>
+    old_tsw1 <span class="token operator">=</span> now_tsw1<span class="token punctuation">;</span> <span class="token comment">// 今の状態を保存</span>
+
+    now_tsw2 <span class="token operator">=</span> <span class="token function">tsw_bit</span><span class="token punctuation">(</span><span class="token number">2</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// TSW2の状態を取得</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token punctuation">(</span>now_tsw2 <span class="token operator">!=</span> old_tsw2<span class="token punctuation">)</span> <span class="token operator">&#x26;&#x26;</span> <span class="token punctuation">(</span>old_tsw2 <span class="token operator">==</span> OFF<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"TSW2 is pressed."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token function">stp_cyc</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 周期ハンドラを停止</span>
+      mode <span class="token operator">=</span> MODE_DATA_ACQ_STOP<span class="token punctuation">;</span> <span class="token comment">// 停止状態へ</span>
+    <span class="token punctuation">}</span>
+    old_tsw2 <span class="token operator">=</span> now_tsw2<span class="token punctuation">;</span> <span class="token comment">// 今の状態を保存</span>
+
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">10</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 監視周期は10ミリ秒</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+        </section>
+        <section class="level3" aria-labelledby="beep音の導入-level-22b">
+          <h3 id="beep音の導入-level-22b">Beep音の導入 Level 2.2b</h3>
+          <figure class="language-c">
+            <figcaption>user.cfg</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token function">CRE_TSK</span><span class="token punctuation">(</span>SPEAKER_TASK<span class="token punctuation">,</span>     <span class="token punctuation">{</span>TA_ACT<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> speaker_task<span class="token punctuation">,</span>      HIGH_PRIORITY<span class="token punctuation">,</span> STACK_SIZE<span class="token punctuation">,</span> <span class="token constant">NULL</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>user.h</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">extern</span> <span class="token keyword">void</span> <span class="token function">speaker_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(initialize)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">initialize</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token comment">// 初期処理を記述する</span>
+  <span class="token function">init_fcled</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// フルカラーLEDの初期化</span>
+  <span class="token function">init_riic</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 温湿度センサーで使用するI2Cの初期化</span>
+  <span class="token function">init_lcd</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// LCDを初期化</span>
+  <span class="token function">init_tsw</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// スイッチの初期化</span>
+  <span class="token function">init_speaker</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// スピーカーの初期化</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(SPEAKER_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token comment">/**
+ * スピーカーを制御するタスク
+ * 
+ * 起床されると0.1秒間「ラ」音を鳴らします。
+ *
+ * 引数: exinf 拡張情報
+ */</span>
+<span class="token keyword">void</span> <span class="token function">speaker_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"SPEAKER_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token function">speaker_onkai</span><span class="token punctuation">(</span>RA1<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token function">speaker_start</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">100</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token function">speaker_stop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+          <figure class="language-c">
+            <figcaption>main.c(SWITCH_TASK)</figcaption>
+            <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">switch_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> old_tsw1<span class="token punctuation">;</span> <span class="token comment">// 1つ前のTSW1の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> now_tsw1<span class="token punctuation">;</span> <span class="token comment">// 今のTSW1の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> old_tsw2<span class="token punctuation">;</span> <span class="token comment">// 2つ前のTSW2の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> now_tsw2<span class="token punctuation">;</span> <span class="token comment">// 今のTSW2の状態</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    now_tsw1 <span class="token operator">=</span> <span class="token function">tsw_bit</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// TSW1の状態を取得</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token punctuation">(</span>now_tsw1 <span class="token operator">!=</span> old_tsw1<span class="token punctuation">)</span> <span class="token operator">&#x26;&#x26;</span> <span class="token punctuation">(</span>old_tsw1 <span class="token operator">==</span> OFF<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">wup_tsk</span><span class="token punctuation">(</span>SPEAKER_TASK<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 音を鳴らす</span>
+      <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"TSW1 is pressed."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token function">sta_cyc</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 周期ハンドラを開始</span>
+      mode <span class="token operator">=</span> MODE_DATA_ACQ_START<span class="token punctuation">;</span> <span class="token comment">// 開始状態へ</span>
+    <span class="token punctuation">}</span>
+    old_tsw1 <span class="token operator">=</span> now_tsw1<span class="token punctuation">;</span> <span class="token comment">// 今の状態を保存</span>
+
+    now_tsw2 <span class="token operator">=</span> <span class="token function">tsw_bit</span><span class="token punctuation">(</span><span class="token number">2</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// TSW2の状態を取得</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token punctuation">(</span>now_tsw2 <span class="token operator">!=</span> old_tsw2<span class="token punctuation">)</span> <span class="token operator">&#x26;&#x26;</span> <span class="token punctuation">(</span>old_tsw2 <span class="token operator">==</span> OFF<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">wup_tsk</span><span class="token punctuation">(</span>SPEAKER_TASK<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 音を鳴らす</span>
+      <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"TSW2 is pressed."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token function">stp_cyc</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 周期ハンドラを停止</span>
+      mode <span class="token operator">=</span> MODE_DATA_ACQ_STOP<span class="token punctuation">;</span> <span class="token comment">// 停止状態へ</span>
+    <span class="token punctuation">}</span>
+    old_tsw2 <span class="token operator">=</span> now_tsw2<span class="token punctuation">;</span> <span class="token comment">// 今の状態を保存</span>
+
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">10</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 監視周期は10ミリ秒</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          </figure>
+        </section>
+      </section>
+      <section class="level2" aria-labelledby="イベントフラグの導入-level-3">
+        <h2 id="イベントフラグの導入-level-3">イベントフラグの導入 Level 3</h2>
+        <figure class="language-c">
+          <figcaption>user.cfg</figcaption>
+          <pre class="language-c"><code class="language-c"><span class="token comment">/* イベントフラグの生成 */</span>
+<span class="token function">CRE_FLG</span><span class="token punctuation">(</span>FLG_ENV<span class="token punctuation">,</span> <span class="token punctuation">{</span>TA_NULL<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+        </figure>
+        <figure class="language-c">
+          <figcaption>main.c(イベント定数の定義)</figcaption>
+          <pre class="language-c"><code class="language-c"><span class="token comment">/* イベントフラグで使用するイベント */</span>
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">EVENT_START</span> <span class="token expression"><span class="token number">0x01</span> </span><span class="token comment">// 開始イベント</span></span>
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">EVENT_STOP</span>  <span class="token expression"><span class="token number">0x02</span> </span><span class="token comment">// 停止イベント</span></span></code></pre>
+        </figure>
+        <figure class="language-c">
+          <figcaption>main.c(SWITCH_TASK)</figcaption>
+          <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">switch_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> old_tsw1<span class="token punctuation">;</span> <span class="token comment">// 1つ前のTSW1の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> now_tsw1<span class="token punctuation">;</span> <span class="token comment">// 今のTSW1の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> old_tsw2<span class="token punctuation">;</span> <span class="token comment">// 2つ前のTSW2の状態</span>
+  <span class="token keyword">static</span> <span class="token keyword">int</span> now_tsw2<span class="token punctuation">;</span> <span class="token comment">// 今のTSW2の状態</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    now_tsw1 <span class="token operator">=</span> <span class="token function">tsw_bit</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// TSW1の状態を取得</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token punctuation">(</span>now_tsw1 <span class="token operator">!=</span> old_tsw1<span class="token punctuation">)</span> <span class="token operator">&#x26;&#x26;</span> <span class="token punctuation">(</span>old_tsw1 <span class="token operator">==</span> OFF<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">wup_tsk</span><span class="token punctuation">(</span>SPEAKER_TASK<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 音を鳴らす</span>
+      <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"TSW1 is pressed."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token function">set_flg</span><span class="token punctuation">(</span>FLG_ENV<span class="token punctuation">,</span> EVENT_START<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 開始イベントを設定</span>
+    <span class="token punctuation">}</span>
+    old_tsw1 <span class="token operator">=</span> now_tsw1<span class="token punctuation">;</span> <span class="token comment">// 今の状態を保存</span>
+
+    now_tsw2 <span class="token operator">=</span> <span class="token function">tsw_bit</span><span class="token punctuation">(</span><span class="token number">2</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// TSW2の状態を取得</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token punctuation">(</span>now_tsw2 <span class="token operator">!=</span> old_tsw2<span class="token punctuation">)</span> <span class="token operator">&#x26;&#x26;</span> <span class="token punctuation">(</span>old_tsw2 <span class="token operator">==</span> OFF<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+      <span class="token function">wup_tsk</span><span class="token punctuation">(</span>SPEAKER_TASK<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 音を鳴らす</span>
+      <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"TSW2 is pressed."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+      <span class="token function">set_flg</span><span class="token punctuation">(</span>FLG_ENV<span class="token punctuation">,</span> EVENT_STOP<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 停止イベントを設定</span>
+    <span class="token punctuation">}</span>
+    old_tsw2 <span class="token operator">=</span> now_tsw2<span class="token punctuation">;</span> <span class="token comment">// 今の状態を保存</span>
+
+    <span class="token function">dly_tsk</span><span class="token punctuation">(</span><span class="token number">10</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 監視周期は10ミリ秒</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+        </figure>
+        <figure class="language-c">
+          <figcaption>main.c(MAIN_TASK)</figcaption>
+          <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">main_task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">SVC_PERROR</span><span class="token punctuation">(</span><span class="token function">syslog_msk_log</span><span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">,</span> <span class="token function">LOG_UPTO</span><span class="token punctuation">(</span>LOG_INFO<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// syslog関数のメッセージの優先度を設定</span>
+  
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"MAIN_TASK has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">int</span> mode <span class="token operator">=</span> MODE_DATA_ACQ_STOP<span class="token punctuation">;</span> <span class="token comment">// 最初は停止状態</span>
+  <span class="token function">fcled_onoff</span><span class="token punctuation">(</span>ON<span class="token punctuation">,</span> OFF<span class="token punctuation">,</span> OFF<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 青色を点灯</span>
+  
+  FLGPTN flgptn<span class="token punctuation">;</span> <span class="token comment">// イベントフラグの状態</span>
+  
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">wai_flg</span><span class="token punctuation">(</span>FLG_ENV<span class="token punctuation">,</span> EVENT_START <span class="token operator">|</span> EVENT_STOP<span class="token punctuation">,</span> TWF_ORW<span class="token punctuation">,</span> <span class="token operator">&#x26;</span>flgptn<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// イベントの発生待ち </span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span>flgptn <span class="token operator">&#x26;</span> EVENT_START<span class="token punctuation">)</span> <span class="token punctuation">{</span> <span class="token comment">// 開始イベントのとき</span>
+      <span class="token function">clr_flg</span><span class="token punctuation">(</span>FLG_ENV<span class="token punctuation">,</span> <span class="token operator">~</span>EVENT_START<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 開始イベントをクリア</span>
+      
+      <span class="token keyword">if</span> <span class="token punctuation">(</span>mode <span class="token operator">!=</span> MODE_DATA_ACQ_START<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        mode <span class="token operator">=</span> MODE_DATA_ACQ_START<span class="token punctuation">;</span> <span class="token comment">// 状態をデータ収集モードに変更</span>
+        <span class="token function">fcled_onoff</span><span class="token punctuation">(</span>OFF<span class="token punctuation">,</span> OFF<span class="token punctuation">,</span> ON<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 赤色を点灯</span>
+        
+        <span class="token function">sta_cyc</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 周期ハンドラを開始</span>
+      <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span>flgptn <span class="token operator">&#x26;</span> EVENT_STOP<span class="token punctuation">)</span> <span class="token punctuation">{</span> <span class="token comment">// 停止イベントのとき</span>
+      <span class="token function">clr_flg</span><span class="token punctuation">(</span>FLG_ENV<span class="token punctuation">,</span> <span class="token operator">~</span>EVENT_STOP<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 停止イベントをクリア</span>
+  
+      <span class="token keyword">if</span> <span class="token punctuation">(</span>mode <span class="token operator">!=</span> MODE_DATA_ACQ_STOP<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        mode <span class="token operator">=</span> MODE_DATA_ACQ_STOP<span class="token punctuation">;</span> <span class="token comment">// 状態を停止モードに</span>
+        <span class="token function">fcled_onoff</span><span class="token punctuation">(</span>ON<span class="token punctuation">,</span> OFF<span class="token punctuation">,</span> OFF<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 青色を点灯</span>
+      
+        <span class="token function">stp_cyc</span><span class="token punctuation">(</span>DATA_ACQ_TIMING_HANDLER<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 周期ハンドラを停止</span>
+      <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+        </figure>
+      </section>
+      <section class="level2" aria-labelledby="データ構造の導入-level-4">
+        <h2 id="データ構造の導入-level-4">データ構造の導入 Level 4</h2>
+        <section class="level3" aria-labelledby="構造体の利用-level-41">
+          <h3 id="構造体の利用-level-41">構造体の利用 Level 4.1</h3>
+        </section>
+        <section class="level3" aria-labelledby="排他制御の実装-level-42">
+          <h3 id="排他制御の実装-level-42">排他制御の実装 Level 4.2</h3>
+        </section>
+      </section>
+      <section class="level2" aria-labelledby="データキューの導入-level-5">
+        <h2 id="データキューの導入-level-5">データキューの導入 Level 5</h2>
+      </section>
+    </section>
+  </body>
+</html>
