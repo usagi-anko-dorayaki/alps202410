@@ -1,0 +1,113 @@
+/* 改ページの制御 */
+hr.pagebreak {
+    visibility: hidden;
+    break-after: page;
+}
+
+/* テーブルの書式 */
+table {
+    break-inside: auto;
+    width: 100%;
+    /* margin-top: 0; */
+}
+
+thead th {
+    text-align: left;
+}
+
+th:first-child, td:first-child {
+    width: 30%;
+    vertical-align: top;
+}
+
+th:last-child, td:last-child {
+    width: 70%;
+}
+
+#table-caption:has(+ table) {
+    text-align: center;
+}
+
+#table-caption + table {    /* テーブルキャプションの下のTable要素 */
+    margin-top: 0;
+}
+
+#table-caption {
+    margin-top: 1em;
+}
+
+/* 画像のサイズをページ幅まで拡大できるようにする */
+/* theme-academicで指定されている値を上書きする。 */
+:root {
+    --vs-theme--figure-img-max-height: 100%; /* 変更 */
+    --vs-theme--figure-img-max-width: 100%; /* 変更 */
+    --vs-theme--frame-border: var(--vs-border-width) solid;
+    --vs-theme--frame-box-decoration-break: slice;
+    --vs-theme--frame-margin-block: var(--vs-spacing-rlh);
+    --vs-theme--frame-margin-inline: 0;
+    --vs-theme--frame-padding: 1rem;
+  }
+
+  blockquote p {
+    text-indent: 0;
+  }
+
+/* 囲み記事 */
+/* https://saruwakakun.com/html-css/reference/box */
+.box26 {
+    position: relative;
+    margin: 3em 0;
+    padding: 0.5em 1em;
+    border: solid 3px #95ccff;
+    border-radius: 8px;
+}
+.box26 .box-title {
+    position: absolute;
+    display: inline-block;
+    top: -13px;
+    left: 10px;
+    padding: 0 9px;
+    line-height: 1;
+    font-size: 19px;
+    background: #FFF;
+    color: #95ccff;
+    font-weight: bold;
+}
+.box26 p {
+    margin: 0; 
+    padding: 0;
+}
+
+/* ソースコードにつけるタイトル */
+[class^="language-"] figcaption {
+    width: 100%;
+    font-size: larger;
+    font-weight: bold;
+}
+/* ソースコード */
+pre {
+    white-space: pre-wrap; /* スペースを詰めず、行折り返しあり */
+    line-break: anywhere; /* 禁則無効 */
+    text-spacing: none; /* text-spacing無効 */
+    font-size: 12Q;
+    line-height: 18Q;
+    border: solid 0.5mm #000;
+    padding-block: 1mm; /* 上下パディング */
+    padding-inline: 1.5mm; /* 左右パディング */
+    /* margin-block: 6mm; 上下マージン */
+    margin-block: 0; /* 上下マージン */
+    margin-inline: 0; /* 左右マージン */
+    /* background: repeating-linear-gradient(#eee 0, #eee 18Q, #fff 18Q, #fff 36Q); */
+    width: 100%;
+}
+
+/* 強調を下線に変える */
+em {
+    font-style: normal;
+    text-decoration: underline;
+    text-decoration-thickness: 0.4em;
+    /* text-decoration-color: #ccc; */
+    text-decoration-color: yellow;
+    text-underline-offset: -0.1em;
+    text-decoration-skip-ink: none;
+}

@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <title>温湿度測定システムの開発</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="../themes/packages/@vivliostyle/theme-academic/theme.css">
+    <link rel="stylesheet" type="text/css" href="../themes/packages/@mitsuharu/vivliostyle-theme-noto-sans-jp/theme.css">
+    <link rel="stylesheet" type="text/css" href="../styles/subject.css">
+  </head>
+  <body>
+    <section class="level1" aria-labelledby="温湿度測定システムの開発">
+      <h1 id="温湿度測定システムの開発">温湿度測定システムの開発</h1>
+      <section class="level2" aria-labelledby="目的">
+        <h2 id="目的">目的</h2>
+        <p>これまで学習したRTOS（TOPPERS/ASP）の知識を使用して、温湿度を測定するシステムを作成します。温湿度センサーからデータを取得してLCDに表示します。</p>
+        <p>RTOSの次の機能を使用します。★の数が多いと難易度が上がります。C言語やRTOSの理解に自信がない方は、周期ハンドラの課題の完成を目指しましょう。</p>
+        <ol>
+          <li>タスク</li>
+          <li>周期ハンドラ</li>
+          <li>イベントフラグ ★</li>
+          <li>セマフォ</li>
+          <li>データキュー ★★</li>
+        </ol>
+      </section>
+      <section class="level2" aria-labelledby="基本機能の実装">
+        <h2 id="基本機能の実装">基本機能の実装</h2>
+        <p>フルカラーLEDを制御するタスク、温湿度センサーの情報を取得するタスク、温湿度センサーから取得したデータを加工するタスクと、変換後のデータをLCDに表示する3つのタスクを作成します。ハードウェアの初期化は初期化ハンドラを使用します。温湿度データはグローバル変数で管理します。</p>
+        <figure>
+          <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89.svg" alt="環境システムのタスク相関図" width="90%">
+          <figcaption aria-hidden="true">環境システムのタスク相関図</figcaption>
+        </figure>
+        <hr class="pagebreak">
+        <div id="table-caption">グローバル変数</div>
+        <table>
+          <thead>
+            <tr>
+              <th>変数</th>
+              <th>説明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>short temp10</td>
+              <td>温度データ（10倍した値）</td>
+            </tr>
+            <tr>
+              <td>short humi10</td>
+              <td>湿度データ（10倍した値）</td>
+            </tr>
+            <tr>
+              <td>char temp[10]</td>
+              <td>温度データの文字列</td>
+            </tr>
+            <tr>
+              <td>char humi[10]</td>
+              <td>湿度データの文字列</td>
+            </tr>
+          </tbody>
+        </table>
+        <div id="table-caption">MAINタスク</div>
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>設定値</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>タスクID</td>
+              <td>MAIN_TASK</td>
+            </tr>
+            <tr>
+              <td>タスク属性</td>
+              <td>TA_ACT</td>
+            </tr>
+            <tr>
+              <td>拡張情報</td>
+              <td>0</td>
+            </tr>
+            <tr>
+              <td>タスクの起動番地</td>
+              <td>main_task</td>
+            </tr>
+            <tr>
+              <td>優先度</td>
+              <td>MAIN_PRIORITY</td>
+            </tr>
+            <tr>
+              <td>説明</td>
+              <td>1秒ごとにフルカラーLEDを青色に点滅させる。</td>
+            </tr>
+          </tbody>
+        </table>
+        <div id="table-caption">温湿度取得タスク</div>
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>設定値</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>タスクID</td>
+              <td>ENV_TASK</td>
+            </tr>
+            <tr>
+              <td>タスク属性</td>
+              <td>TA_ACT</td>
+            </tr>
+            <tr>
+              <td>拡張情報</td>
+              <td>0</td>
+            </tr>
+            <tr>
+              <td>タスクの起動番地</td>
+              <td>env_task</td>
+            </tr>
+            <tr>
+              <td>優先度</td>
+              <td>MID_PRIORITY</td>
+            </tr>
+            <tr>
+              <td>説明</td>
+              <td>1秒ごとに温湿度センサーからデータを取得します。<br>取得したデータはグローバル変数に保存します。<br>生成した文字データは別のグローバル変数に保存します。<br>データの保存後、データ変換タスクを起床します。</td>
+            </tr>
+          </tbody>
+        </table>
+        <div id="table-caption">データ変換タスク</div>
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>設定値</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>タスクID</td>
+              <td>DATA_CHANGE_TASK</td>
+            </tr>
+            <tr>
+              <td>タスク属性</td>
+              <td>TA_ACT</td>
+            </tr>
+            <tr>
+              <td>拡張情報</td>
+              <td>0</td>
+            </tr>
+            <tr>
+              <td>タスクの起動番地</td>
+              <td>data_change_task</td>
+            </tr>
+            <tr>
+              <td>優先度</td>
+              <td>MID_PRIORITY</td>
+            </tr>
+            <tr>
+              <td>説明</td>
+              <td>グローバル変数からデータを取得します。<br>取得したデータから文字データを生成します。<br>生成した文字データは別のグローバル変数に保存します。<br>保存が完了したら、LCD表示タスクを起床します。</td>
+            </tr>
+          </tbody>
+        </table>
+        <div id="table-caption">LCDタスク</div>
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>設定値</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>タスクID</td>
+              <td>LCD_TASK</td>
+            </tr>
+            <tr>
+              <td>タスク属性</td>
+              <td>TA_ACT</td>
+            </tr>
+            <tr>
+              <td>拡張情報</td>
+              <td>0</td>
+            </tr>
+            <tr>
+              <td>タスクの起動番地</td>
+              <td>lcd_task</td>
+            </tr>
+            <tr>
+              <td>優先度</td>
+              <td>MID_PRIORITY</td>
+            </tr>
+            <tr>
+              <td>説明</td>
+              <td>グローバル変数からデータを取得します。<br>取得したデータをLCDに表示します。</td>
+            </tr>
+          </tbody>
+        </table>
+        <section class="level3" aria-labelledby="準備-level-10">
+          <h3 id="準備-level-10">準備 Level 1.0</h3>
+          <p>MAIN_TASKを含めて4つのタスクが正常に起動することを確認します。</p>
+          <ul>
+            <li>user.cfgファイルにタスク生成の静的APIを記述します。</li>
+            <li>user.hにタスクが使用するC言語の関数のプロトタイプ宣言を記述します。</li>
+            <li>main.cにグローバル変数を宣言します。</li>
+            <li>main.cに4つのタスクを作成します。
+              <ul>
+                <li>すべてのタスクはパソコンにメッセージを表示して、<code>slp_tsk</code>サービスコールで待ち状態になります。</li>
+              </ul>
+            </li>
+          </ul>
+          <p>タスクとして使用するC言語の関数の基本的な構造を次に示します。</p>
+          <pre class="language-c"><code class="language-c"><span class="token keyword">void</span> <span class="token function">task</span><span class="token punctuation">(</span><span class="token class-name">intptr_t</span> exinf<span class="token punctuation">)</span>
+<span class="token punctuation">{</span>
+  <span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"Task has been started."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token keyword">while</span> <span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token function">slp_tsk</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 待ち状態</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre>
+          <p>実行結果の例です。</p>
+          <div class="frame">
+            <blockquote>
+              <p>TOPPERS/ASP Kernel Release 1.6.1 for AKI-RX621 Board (Nov 10 2024, 19:42:16)<br>Copyright (C) 2000-2003 by Embedded and Real-Time Systems Laboratory<br>Toyohashi Univ. of Technology, JAPAN<br>Copyright (C) 2004-2010 by Embedded and Real-Time Systems Laboratory<br>Graduate School of Information Science, Nagoya Univ., JAPAN<br>Copyright (C) 2010 by Witz Corporation, JAPAN<br><br>MAIN_TASK has been started.<br>ENV_TASK has been started.<br>DATA_CHANGE_TASK has been started.<br>LCD_TASK has been started.<br>System logging task is started on port 4.</p>
+            </blockquote>
+          </div>
+        </section>
+        <section class="level3" aria-labelledby="main_taskの実装-level-11">
+          <h3 id="main_taskの実装-level-11">MAIN_TASKの実装 Level 1.1</h3>
+          <p>システムが起動していることがわかるように、MAIN_TASKでフルカラーLEDの色を1秒間隔で点滅させます。</p>
+        </section>
+        <section class="level3" aria-labelledby="env_taskの実装-level-12">
+          <h3 id="env_taskの実装-level-12">ENV_TASKの実装 Level 1.2</h3>
+          <p>温湿度センサーから1秒間隔でデータを取得します。</p>
+          <ul>
+            <li>取得した温度データはグローバル変数のtemp10に保存します。</li>
+            <li>取得した湿度データはグローバル変数のhumi10に保存します。</li>
+            <li>取得したデータを確認するために（デバッグ）パソコンに表示します。</li>
+          </ul>
+          <p>実行結果の例です。10倍した値になっています。tempの203は20.3℃、humiの664は66.4%です。</p>
+          <div class="frame">
+            <blockquote>
+              <p>temp is 203.<br>humi is 664.<br>temp is 203.<br>humi is 664.<br>temp is 203.</p>
+            </blockquote>
+          </div>
+        </section>
+        <section class="level3" aria-labelledby="data_change_taskの実装-level-13">
+          <h3 id="data_change_taskの実装-level-13">DATA_CHANGE_TASKの実装 Level 1.3</h3>
+          <p>ENV_TASKからDATA_CHANGE_TASKを起床します。</p>
+          <p>温湿度データを「温湿度データの文字列」に変換します。</p>
+          <ul>
+            <li>グローバル変数temp10を文字列に変換して、グローバル変数tempに保存します。</li>
+            <li>グローバル変数humi10を文字列に変換して、グローバル変数humiに保存します。</li>
+            <li>文字列の変換は温湿度センサーのデバイスドライバを使用します。</li>
+            <li>変換したデータを確認するために（デバッグ）パソコンに表示します。</li>
+          </ul>
+          <p>実行結果の例です。</p>
+          <div class="frame">
+            <blockquote>
+              <p>temp is 202.<br>humi is 670.<br>temp is +20.2'C.<br>humi is 67.0%.<br>temp is 203.<br>humi is 670.<br>temp is +20.3'C.<br>humi is 67.0%.</p>
+            </blockquote>
+          </div>
+        </section>
+        <section class="level3" aria-labelledby="lcd_taskの実装-level-14">
+          <h3 id="lcd_taskの実装-level-14">LCD_TASKの実装 Level 1.4</h3>
+          <p>
+            DATA_CHANGE_TASKからLCD_TASKを起床します。
+            温湿度データの文字列をLCDに表示します。
+          </p>
+          <ul>
+            <li>グローバル変数tempをLCDに表示します。</li>
+            <li>グローバル変数humiをLCDに表示します。</li>
+          </ul>
+          <p>実行すると、LCDに温度と湿度が表示されます。</p>
+          <div class="frame">
+            <p>+20.2'C 67.0%</p>
+          </div>
+        </section>
+      </section>
+      <section class="level2" aria-labelledby="周期ハンドラの実装-level-21">
+        <h2 id="周期ハンドラの実装-level-21">周期ハンドラの実装 Level 2.1</h2>
+        <p>
+          温湿度データの取得はENV_TASK内で<code>dly_tsk</code>を使用して、1秒待ってから取得しています。
+          <em>他のタスクが動作している場合に優先度などの影響を受けて、1秒以上の時間がかかることがあります。</em>
+        </p>
+        <p>
+          他のタスクに影響されずに、1秒ごとに温湿度センサーから値を取得できるように修正します。
+          1秒ごとに起動する周期ハンドラを作成します。周期ハンドラから温湿度取得タスクを起動します。
+        </p>
+        <figure>
+          <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB2.1.svg" alt="周期ハンドラによるタスクの起床" width="70%">
+          <figcaption aria-hidden="true">周期ハンドラによるタスクの起床</figcaption>
+        </figure>
+        <ul>
+          <li>周期ハンドラをuser.cfgに定義します。</li>
+          <li>周期ハンドラが使用するC言語の関数のプロトタイプ宣言をuser.hに宣言します。</li>
+          <li>周期ハンドラをmain.cに記述します。
+            <ul>
+              <li>ENV_TASKを起床します。</li>
+            </ul>
+          </li>
+          <li>ENV_TASKを起床待ちに修正します。</li>
+        </ul>
+        <p>修正前と同じ動作をします。</p>
+        <hr class="pagebreak">
+        <section class="level3" aria-labelledby="スイッチによる制御-level-22">
+          <h3 id="スイッチによる制御-level-22">スイッチによる制御 Level 2.2</h3>
+          <p>スイッチを確認するタスクを追加します。</p>
+          <ul>
+            <li>スイッチ1（TSW1）を押すと、センサーのデータを収集を開始します。</li>
+            <li>スイッチ2（TSW2）を押すと、センサーのデータ収集を停止します。</li>
+          </ul>
+          <figure>
+            <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB2.2.svg" alt="スイッチ監視タスクの追加" width="70%">
+            <figcaption aria-hidden="true">スイッチ監視タスクの追加</figcaption>
+          </figure>
+          <div id="table-caption">スイッチタスク</div>
+          <table>
+            <thead>
+              <tr>
+                <th>項目</th>
+                <th>設定値</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>タスクID</td>
+                <td>SWITCH_TASK</td>
+              </tr>
+              <tr>
+                <td>タスク属性</td>
+                <td>TA_ACT</td>
+              </tr>
+              <tr>
+                <td>拡張情報</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>タスクの起動番地</td>
+                <td>switch_task</td>
+              </tr>
+              <tr>
+                <td>優先度</td>
+                <td>HIGH_PRIORITY</td>
+              </tr>
+              <tr>
+                <td>説明</td>
+                <td>2つのスイッチ（TSW1とTSW2）を監視します。<br>監視周期は10ミリ秒です。<br>開始スイッチ（TSW1）が押されると、温湿度データ収集タイミング生成ハンドラを開始します。<br>停止スイッチ（TSW2）が押されると、温湿度データ収集タイミング生成ハンドラを停止します。</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>最初に、スイッチが押されたことを確認する処理を追加します。</p>
+          <ul>
+            <li>user.cfgに、スイッチの状態を確認するタスクを追加します。</li>
+            <li>user.hに、スイッチの状態を監視するタスクが使用するC言語の関数のプロトタイプ宣言を記述します。</li>
+            <li>main.cに具体的な処理を記述します。
+              <ul>
+                <li>スイッチの立ち上がりを検出する処理を記述します。</li>
+                <li>正常に動作していることを確認するために、パソコンに状態を表示（例 TSW1 is pressed.）します。</li>
+              </ul>
+            </li>
+          </ul>
+          <p>修正後の実行例です。スイッチ1やスイッチ2を押すと、パソコンにメッセージが表示されることを確認します。</p>
+          <div class="frame">
+            <blockquote>
+              <p>temp is +20.8'C.<br>humi is 66.1%.<br>TSW1 is pressed.<br>temp is 208.<br>humi is 661.<br>temp is +20.8'C.<br>humi is 66.1%.<br>TSW2 is pressed.<br>temp is 207.</p>
+            </blockquote>
+          </div>
+          <p>「温湿度センサーから値を取得するタイミングを生成する周期ハンドラ（DATA_ACQ_TIMING_HANDLER）」を制御する処理を追加します。</p>
+          <ul>
+            <li>user.cfgを修正します。システムの起動時に、周期ハンドラが停止状態になるように修正します。</li>
+            <li>main.cのswitch_task（SWITCH_TASK）を修正します。
+              <ul>
+                <li>スイッチ1（開始）が押されたら周期ハンドラ（DATA_ACQ_TIMING_HANDLER）を開始します。</li>
+                <li>スイッチ2（停止）が押されたら周期ハンドラ（DATA_ACQ_TIMING_HANDLER）を停止します。</li>
+              </ul>
+            </li>
+          </ul>
+          <p>動作確認を行います。</p>
+          <ul>
+            <li>スイッチ1（TSW1）を押すと、温湿度収集が行われます。</li>
+            <li>スイッチ2（TSW2）を押すと、温湿度収集が停止します。</li>
+          </ul>
+          <p>実行例です。</p>
+          <div class="frame">
+            <blockquote>
+              <p>MAIN_TASK has been started.<br>ENV_TASK has been started.<br>DATA_CHANGE_TASK has been started.<br>LCD_TASK has been started.<br>System logging task is started on port 4.<br>TSW1 is pressed.<br>temp is 208.<br>humi is 661.<br>temp is +20.8'C.</p>
+            </blockquote>
+          </div>
+        </section>
+        <section class="level3" aria-labelledby="ledの色で動作モードを表示-level-22a">
+          <h3 id="ledの色で動作モードを表示-level-22a">LEDの色で動作モードを表示 Level 2.2a</h3>
+          <p>温度収集の実行中なのか、停止中なのか分かりづらいので、フルカラーLEDの色で判断できるように修正します。</p>
+          <ul>
+            <li>停止中は赤色が点滅します。</li>
+            <li>動作中は青色が点滅します。</li>
+          </ul>
+          <p>LEDの色はMAIN_TASKで制御しています。状態をSWITCH_TASKで切り替えているので、SWITCH_TASKからMAIN_TASKに状態が変化したことを通知します。通知には、グローバル変数modeを宣言して使用します。</p>
+          <figure>
+            <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB2.2a.svg" alt="LEDの色を動作モードで変更" width="90%">
+            <figcaption aria-hidden="true">LEDの色を動作モードで変更</figcaption>
+          </figure>
+          <ul>
+            <li>グローバル変数modeを宣言します。</li>
+            <li>MAIN_TASKを修正します。
+              <ul>
+                <li>グローバル変数の値により、LEDで点灯する色を制御します。</li>
+              </ul>
+            </li>
+            <li>SWITCH_TASKを修正します。
+              <ul>
+                <li>開始スイッチが押されたら、グローバル変数modeを開始状態に変更します。</li>
+                <li>停止スイッチが押されたら、グローバル変数modeを停止状態に変更します。</li>
+              </ul>
+            </li>
+          </ul>
+        </section>
+        <section class="level3" aria-labelledby="beep音の導入-level-22b">
+          <h3 id="beep音の導入-level-22b">Beep音の導入 Level 2.2b</h3>
+          <p>スイッチを押すと「ピッ」と音が鳴るようにします。音を鳴らすSPEAKER_TASKタスクを<strong>起床</strong>して音を鳴らします。起床されたSPEAKER_TASKタスクは、0.1秒だけ「ラ」音を鳴らします。</p>
+          <figure>
+            <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB2.2b.svg" alt="スピーカー機能を追加" width="90%">
+            <figcaption aria-hidden="true">スピーカー機能を追加</figcaption>
+          </figure>
+          <div id="table-caption">スピーカータスク</div>
+          <table>
+            <thead>
+              <tr>
+                <th>項目</th>
+                <th>設定値</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>タスクID</td>
+                <td>SPEAKER_TASK</td>
+              </tr>
+              <tr>
+                <td>タスク属性</td>
+                <td>TA_ACT</td>
+              </tr>
+              <tr>
+                <td>拡張情報</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>タスクの起動番地</td>
+                <td>speaker_task</td>
+              </tr>
+              <tr>
+                <td>優先度</td>
+                <td>HIGH_PRIORITY</td>
+              </tr>
+            </tbody>
+          </table>
+          <ul>
+            <li>SPEAKER_TASKを作成します。
+              <ul>
+                <li>user.cfgにSPEAKER_TASKを定義します。</li>
+                <li>user.hにSPEAKER_TASKが使用するC言語の関数のプロトタイプ宣言を行います。</li>
+                <li>main.cにSPEAKER_TASKの処理を記述します。</li>
+              </ul>
+            </li>
+            <li>初期化ハンドラでスピーカーを初期化します。</li>
+            <li>main.cにspeaker_task関数を追加します。
+              <ul>
+                <li>スイッチが押されたらSPEAKER_TASKを起床します。</li>
+              </ul>
+            </li>
+          </ul>
+          <figure>
+            <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB2%E5%AE%8C%E6%88%90.svg" alt="レベル2のタスク相関図" width="90%">
+            <figcaption aria-hidden="true">レベル2のタスク相関図</figcaption>
+          </figure>
+          <hr class="pagebreak">
+        </section>
+      </section>
+      <section class="level2" aria-labelledby="イベントフラグの導入-level-3">
+        <h2 id="イベントフラグの導入-level-3">イベントフラグの導入 Level 3</h2>
+        <p>SWITCH_TASKとMAIN_TASKはグローバル変数で通信を行っています。イベントフラグを使用して通知するように修正します。</p>
+        <p>今回の修正に合わせて、<em>フルカラーLEDを（点滅から）点灯する方式に変更</em>します。温湿度データ取得中は赤色、停止中は青色を点灯します。理由は後述のコラムを参照してください。</p>
+        <div id="table-caption">イベントフラグ</div>
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>設定値</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>イベントフラグID</td>
+              <td>FLAG_ENV</td>
+            </tr>
+            <tr>
+              <td>イベントフラグ属性</td>
+              <td>TA_NULL</td>
+            </tr>
+            <tr>
+              <td>初期状態</td>
+              <td>0</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>イベントフラグの位置は定数（<code>#define</code>）で定義します。</p>
+        <div id="table-caption">イベント</div>
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>設定値</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>EVENT_START</td>
+              <td>0x01</td>
+            </tr>
+            <tr>
+              <td>EVENT_STOP</td>
+              <td>0x02</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="box26"><span class="box-title">LEDの点滅を点灯に変更した理由</span>
+          <p>動作状態を表すLEDは、MAIN_TASKで1秒ごとに点滅しています。イベントフラグ<em>待ちのサービスコール（wai_flg）を使うとタスクが停止</em>します。そのため、1秒ごとに点滅できません。</p>
+          <p>点滅させたいときは、タイムアウト機能付きのサービスコール（twai_flg）（未説明）を使用するか、点滅を行う周期ハンドラを使用するなど、別の構成を検討します。</p>
+        </div>
+        <ul>
+          <li>user.cfgにイベントフラグの生成を定義します。</li>
+          <li>main.cにイベントを定義します。</li>
+          <li>main.cにswitch_task関数を追加します。
+            <ul>
+              <li>SWITCH_TASKを修正して、スイッチ1（開始）が押されたら、開始イベント（EVENT_START）をイベントフラグで通知します。</li>
+              <li>SWITCH_TASKを修正して、スイッチ2（停止）が押されたら、停止イベント（EVENT_STOP）をイベントフラグで通知します。</li>
+            </ul>
+          </li>
+          <li>main_taskを修正して、イベントフラグを受信したらフルカラーLEDの色を変更します。</li>
+          <li>グローバル変数modeを削除します。</li>
+        </ul>
+        <p>ここまでの修正で、システムが正常に動作することを確認します。</p>
+        <p>SWITCH_TASKで「温湿度データ収集タイミング生成ハンドラ（DATA_ACQ_TIMING_HANDLER）」を制御していますが、MAIN_TASKで管理するようにプログラムを修正します。</p>
+        <ul>
+          <li>main.cのswitch_task関数（SWITCH_TASK）を修正します。DATA_ACQ_TIMING_HANDLERを開始、停止しているプログラムを削除します。</li>
+          <li>main.cのmain_task関数（MAIN_TASK）を修正します。DATA_ACQ_TIMING_HANDLERを開始、停止します。</li>
+        </ul>
+        <p>修正後のシステム図は次の通りです。</p>
+        <figure>
+          <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB3.svg" alt="レベル3の完成図" width="90%">
+          <figcaption aria-hidden="true">レベル3の完成図</figcaption>
+        </figure>
+      </section>
+      <section class="level2" aria-labelledby="データ構造の導入-level-4">
+        <h2 id="データ構造の導入-level-4">データ構造の導入 Level 4</h2>
+        <p>これまでのプログラムは、温湿度データを個別のグローバル変数で管理しています。C言語は複数のデータを1つにまとめる<strong>構造体</strong>が使えます。構造体を使用するプログラムに修正します。</p>
+        <section class="level3" aria-labelledby="構造体の利用-level-41">
+          <h3 id="構造体の利用-level-41">構造体の利用 Level 4.1</h3>
+          <p>温湿度データを構造体で表現します。</p>
+          <pre class="language-c"><code class="language-c"><span class="token keyword">typedef</span> <span class="token keyword">struct</span> <span class="token punctuation">{</span>
+  <span class="token keyword">short</span> temp10<span class="token punctuation">;</span>
+  <span class="token keyword">short</span> humi10<span class="token punctuation">;</span>
+  <span class="token keyword">char</span> temp<span class="token punctuation">[</span><span class="token number">10</span><span class="token punctuation">]</span><span class="token punctuation">;</span>
+  <span class="token keyword">char</span> humi<span class="token punctuation">[</span><span class="token number">10</span><span class="token punctuation">]</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span> ENV_DATA<span class="token punctuation">;</span>
+
+ENV_DATA env_data<span class="token punctuation">;</span></code></pre>
+          <figure>
+            <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB4.svg" alt="構造体の導入" width="90%">
+            <figcaption aria-hidden="true">構造体の導入</figcaption>
+          </figure>
+          <p>修正が必要なのは、ENV_TASK、DATA_CHANGE_TASKとLCD_TASKです。</p>
+          <ul>
+            <li>main.cに構造体を定義して、グローバル変数の一部（temp10とhumi10）を構造体に配置します。</li>
+            <li>main.cのenv_task関数（ENV_TASK）のデータを保存するプログラムを、構造体を使用するように修正します。</li>
+            <li>main.cのdata_change_task関数（DATA_CHANGE_TASK）の、データを取得、保存するプログラムを、構造体を使用するように修正します。</li>
+            <li>main.cのlcd_task関数（LCD_TASK）のデータを取得、LCDに表示するプログラムを構造体を使用するように修正します。</li>
+          </ul>
+        </section>
+        <section class="level3" aria-labelledby="排他制御の実装-level-42">
+          <h3 id="排他制御の実装-level-42">排他制御の実装 Level 4.2</h3>
+          <p>グローバル変数に複数のタスクがアクセスします。<strong>セマフォ</strong>を使用して排他制御を行います。</p>
+          <figure>
+            <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB4.2-Semaphore.svg" alt="排他制御の導入" width="90%">
+            <figcaption aria-hidden="true">排他制御の導入</figcaption>
+          </figure>
+          <p>グローバル変数のアクセスに<strong>バイナリセマフォ</strong>を使用します。</p>
+          <div id="table-caption">セマフォ</div>
+          <table>
+            <thead>
+              <tr>
+                <th>項目</th>
+                <th>設定値</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>セマフォID</td>
+                <td>SEM_ENV</td>
+              </tr>
+              <tr>
+                <td>セマフォ属性</td>
+                <td>TA_NULL</td>
+              </tr>
+              <tr>
+                <td>初期値</td>
+                <td>1</td>
+              </tr>
+              <tr>
+                <td>最大値</td>
+                <td>1</td>
+              </tr>
+            </tbody>
+          </table>
+          <ul>
+            <li>user.cfgでセマフォを定義します。</li>
+            <li>main.cのenv_task関数（ENV_TASK）で、セマフォを使用してデータにアクセスするように修正します。</li>
+            <li>mainc.のdata_change_task関数（DATA_CHANGE_TASK）で、セマフォを使用してデータにアクセスするように修正します。</li>
+            <li>main.cのlcd_task関数（LCD_TASK）で、セマフォを使用してデータにアクセスするように修正します。</li>
+          </ul>
+          <div class="box26"><span class="box-title">排他制御は必要でしょうか？</span>
+            <p>排他制御は、複数のタスクやハンドラが同時に同じリソース（今回はグローバル変数）にアクセスすることで、データが不正な状態になることを防止する仕組みです。しかし、リソースにアクセスする度に、セマフォの獲得と返却を行うので効率は悪化します。</p>
+            <p>今回のシステムは、リソースにアクセスする同じ優先度を持つタスクが3つ（ENV_TASK、DATA_CHANGE_TASKとLCD_TASK）あります。ENV_TASKの処理が終了してからDATA_CHANGE_TASKを起動します。DATA_CHANGE_TASKの処理が終了してからLCD_TASKを起動しています。このように<em>順番に処理を行う場合は、複数のタスクが同時に同じリソースにアクセスすることはありません。よって、排他制御は必要ありません。</em></p>
+          </div>
+        </section>
+      </section>
+      <section class="level2" aria-labelledby="データキューの導入-level-5">
+        <h2 id="データキューの導入-level-5">データキューの導入 Level 5</h2>
+        <p>温湿度センサーのデータの取得を1秒間隔が行っています。データ取得の間隔を0.1秒に変更します。データ変換処理は、1秒間のデータの平均を計算してLCDに出力します。</p>
+        <p>
+          <em>データ変換以降の処理が、「データ取得処理の間隔より時間が必要になることがある」と仮定します。</em>
+          そのため、データ取得タスクとデータ変換タスクの間はデータキューを使用し、処理速度の差を吸収します。
+        </p>
+        <p>データの取りこぼしがないように、温湿度センサータスクの優先度をMID_PRIORITYからHIGH_PRIORITYに変更します。</p>
+        <figure>
+          <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB5%20%E3%82%BF%E3%82%B9%E3%82%AF%E7%9B%B8%E9%96%A2%E5%9B%B3.svg" alt="データキューを使用するタスク相関図" width="90%">
+          <figcaption aria-hidden="true">データキューを使用するタスク相関図</figcaption>
+        </figure>
+        <div id="table-caption">データキュー</div>
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>設定値</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>データキューID</td>
+              <td>DTQ_ENV</td>
+            </tr>
+            <tr>
+              <td>データキュー属性</td>
+              <td>TA_NULL</td>
+            </tr>
+            <tr>
+              <td>個数</td>
+              <td>10</td>
+            </tr>
+            <tr>
+              <td>番地</td>
+              <td>NULL</td>
+            </tr>
+          </tbody>
+        </table>
+        <section class="level3" aria-labelledby="データキューで使用するデータ構造">
+          <h3 id="データキューで使用するデータ構造">データキューで使用するデータ構造</h3>
+          <p>今回のシステムは、データキューに送信できるデータのサイズは32bitです。温度データが16bit、湿度データが16bitなので、温度データと湿度データを組み合わせて1つのデータとして扱います。上位16bitは温度データ、下位16bitは湿度データとします。</p>
+          <figure>
+            <img src="./img/%E8%AA%B2%E9%A1%8C%EF%BC%88%E7%92%B0%E5%A2%83%E3%82%BB%E3%83%B3%E3%82%B5%EF%BC%89-%E3%83%AC%E3%83%99%E3%83%AB5%20%E3%83%87%E3%83%BC%E3%82%BF%E6%A7%8B%E9%80%A0.svg" alt="データキューで使用するデータ構造" width="60%">
+            <figcaption aria-hidden="true">データキューで使用するデータ構造</figcaption>
+          </figure>
+          <ul>
+            <li>user.cfgを修正します。
+              <ul>
+                <li>データキューを定義します。</li>
+                <li>ENV_TASKの優先度をHIGH_PRIORITYに変更します。</li>
+              </ul>
+            </li>
+            <li>main.cの構造体の定義から、メンバーtemp10とhumi10を削除します。</li>
+            <li>main.cのenv_task関数（ENV_TASK）を修正します。
+              <ul>
+                <li>センサーから取得した温度と湿度データを、データキュー用のデータに変換します。</li>
+                <li>データキューにデータを送信します。</li>
+              </ul>
+            </li>
+            <li>main.cのdata_change_task関数（DATA_CHANGE_TASK）を修正します。
+              <ul>
+                <li>データキューからデータを受信します。</li>
+                <li>データを配列に保存します。</li>
+                <li>データを10個受信したら、温度と湿度の平均値を計算します。</li>
+                <li>温度と湿度の平均値の文字列データをグローバル変数に保存します。</li>
+              </ul>
+            </li>
+          </ul>
+          <p>正常に動作することを確認します。「温湿度データ取得タスクを起動する周期ハンドラ」（DATA_ACQ_TIMING_HANDLER）の設定を変更していないので、10秒の平均を求めています。</p>
+          <ul>
+            <li>user.cfgを開いて、周期ハンドラの周期を1秒から0.1秒に変更します。</li>
+            <li>main.cのenv_task関数（ENV_TASK）の、パソコンへデータを出力する処理をコメントアウトします。</li>
+          </ul>
+          <div class="box26"><span class="box-title">デバッグ用のコードの扱い</span>
+            <p>開発中は、デバッグ用のコードを記述します。デバッグ用のコードは、製品をリリースするときは不要です。すべて手作業で削除することもできますが、慎重な作業が必要です。</p>
+            <p>C言語は<code>#ifdef</code>などのプリプロセッサ機能を使用して、デバッグ時だけビルド対象とするソースコードを記述することができます。</p>
+            <p>例</p>
+            <pre class="language-c"><code class="language-c"><span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">define</span> <span class="token macro-name">DEBUG</span></span>
+
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">ifdef</span> <span class="token expression">DEBUG</span></span>
+<span class="token function">syslog</span><span class="token punctuation">(</span>LOG_NOTICE<span class="token punctuation">,</span> <span class="token string">"デバッグメッセージ"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">endif</span></span></code></pre>
+            <p>条件分岐を行う<code>#elif</code>なども使用できます。</p>
+          </div>
+          <div class="box26"><span class="box-title">データの処理</span>
+            <p>
+              平均の実装方法には、移動平均など別の計算方法もあります。
+              データをフィルタリングする方法は平均意外にも様々な方式があります。
+            </p>
+          </div>
+        </section>
+      </section>
+    </section>
+  </body>
+</html>
